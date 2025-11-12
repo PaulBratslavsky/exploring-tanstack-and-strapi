@@ -1,76 +1,69 @@
 import { createServerFn } from '@tanstack/react-start'
+import qs from 'qs'
 import type {
   TCommentCreate,
-  TCommentUpdate,
   TCommentResponse,
   TCommentSingleResponse,
+  TCommentUpdate,
 } from '@/types'
 import { useAppSession } from '@/lib/session'
-import { getStrapiURL } from '@/lib/utils'
+import { getAuthenticatedCollection, sdk } from '@/data/strapi-sdk'
 
-const baseUrl = getStrapiURL()
-
-// Helper function to make authenticated requests
-const makeAuthenticatedRequest = async (
-  endpoint: string,
-  options: RequestInit,
-  jwt: string,
-) => {
-  const url = new URL(endpoint, baseUrl)
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${jwt}`,
-      ...options.headers,
-    },
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    console.error('API Error:', response.status, errorData)
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error?.message || 'Unknown error'}`)
-  }
-
-  return response.json()
-}
-
-// Get comments for a specific article using standard Strapi filtering
+// Get comments for a specific article using Strapi SDK custom route (public access)
 const getCommentsForArticleInternal = async (
   articleDocumentId: string,
   page: number = 1,
-  pageSize: number = 10,
-  searchQuery?: string
-) => {
-  const url = new URL('/api/comments', baseUrl)
-  
-  // Use Strapi's filtering to get comments for this article
-  url.searchParams.append('filters[articleId][$eq]', articleDocumentId)
-  
-  // Add search filter if provided (search by author username or content)
-  if (searchQuery && searchQuery.trim()) {
-    url.searchParams.append('filters[$or][0][author][username][$containsi]', searchQuery.trim())
-    url.searchParams.append('filters[$or][1][content][$containsi]', searchQuery.trim())
+  pageSize: number = 5,
+  searchQuery?: string,
+): Promise<TCommentResponse> => {
+  // Build query object
+  const query = {
+    filters: {
+      articleId: {
+        $eq: articleDocumentId,
+      },
+      ...(searchQuery &&
+        searchQuery.trim() && {
+          $or: [
+            {
+              author: {
+                username: {
+                  $containsi: searchQuery.trim(),
+                },
+              },
+            },
+            {
+              content: {
+                $containsi: searchQuery.trim(),
+              },
+            },
+          ],
+        }),
+    },
+    populate: {
+      author: {
+        fields: ['username'],
+      },
+    },
+    pagination: {
+      page,
+      pageSize,
+    },
+    sort: ['createdAt:desc'],
   }
-  
-  // Populate author to get username only (keep everything else private)
-  url.searchParams.append('populate[author][fields][0]', 'username')
-  
-  // Pagination
-  url.searchParams.append('pagination[page]', String(page))
-  url.searchParams.append('pagination[pageSize]', String(pageSize))
-  
-  // Sort by most recent first
-  url.searchParams.append('sort[0]', 'createdAt:desc')
 
-  const response = await fetch(url)
+  // Stringify query using qs
+  const queryString = qs.stringify(query, { encodeValuesOnly: true })
 
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
-  }
+  // Use SDK fetch for custom route
+  const response = await sdk.fetch(
+    `comments/custom/get-comments?${queryString}`,
+    {
+      method: 'GET',
+    },
+  )
 
-  return response.json() as Promise<TCommentResponse>
+  return response.json()
 }
 
 // Create a new comment
@@ -78,10 +71,6 @@ const createCommentInternal = async (
   commentData: TCommentCreate,
   jwt: string,
 ) => {
-  if (!commentData) {
-    throw new Error('Comment data is required')
-  }
-
   if (!commentData.content) {
     throw new Error('Comment content is required')
   }
@@ -105,15 +94,9 @@ const createCommentInternal = async (
     // author will be set by middleware from authenticated user
   }
 
-  return makeAuthenticatedRequest(
-    '/api/comments',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        data: requestData,
-      }),
-    },
-    jwt,
+  const authenticatedComments = getAuthenticatedCollection('comments', jwt)
+  return authenticatedComments.create(
+    requestData,
   ) as Promise<TCommentSingleResponse>
 }
 
@@ -123,50 +106,58 @@ const updateCommentInternal = async (
   commentData: TCommentUpdate,
   jwt: string,
 ) => {
-  return makeAuthenticatedRequest(
-    `/api/comments/${commentDocumentId}`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({
-        data: {
-          content: commentData.content,
-        },
-      }),
-    },
-    jwt,
-  ) as Promise<TCommentSingleResponse>
+  const authenticatedComments = getAuthenticatedCollection('comments', jwt)
+  return authenticatedComments.update(commentDocumentId, {
+    content: commentData.content,
+  }) as Promise<TCommentSingleResponse>
 }
 
-// Delete a comment (soft delete using DELETE method)
+// Delete a comment
 const deleteCommentInternal = async (
   commentDocumentId: string,
   jwt: string,
-) => {
-  return makeAuthenticatedRequest(
-    `/api/comments/${commentDocumentId}`,
-    {
-      method: 'DELETE',
+): Promise<TCommentSingleResponse> => {
+  const authenticatedComments = getAuthenticatedCollection('comments', jwt)
+  await authenticatedComments.delete(commentDocumentId)
+
+  // Return a success response since SDK delete returns void
+  return {
+    data: {
+      id: 0,
+      documentId: commentDocumentId,
+      content: '',
+      contentType: 'comment',
+      contentId: '',
+      userId: '',
+      isEdited: false,
+      isInappropriate: false,
+      isDeleted: true,
+      createdAt: '',
+      updatedAt: '',
+      author: undefined,
     },
-    jwt,
-  ) as Promise<TCommentSingleResponse>
+    meta: {},
+  }
 }
 
 // Server function to get comments for an article
 export const getCommentsForArticle = createServerFn({
   method: 'GET',
 })
-  .validator((data: { 
-    articleDocumentId: string
-    page?: number
-    pageSize?: number
-    searchQuery?: string
-  }) => data)
+  .validator(
+    (data: {
+      articleDocumentId: string
+      page?: number
+      pageSize?: number
+      searchQuery?: string
+    }) => data,
+  )
   .handler(async ({ data }): Promise<TCommentResponse> => {
     const response = await getCommentsForArticleInternal(
       data.articleDocumentId,
       data.page,
       data.pageSize,
-      data.searchQuery
+      data.searchQuery,
     )
     return response
   })
@@ -176,28 +167,31 @@ export const createComment = createServerFn({
   method: 'POST',
 })
   .validator((data: TCommentCreate) => data)
-  .handler(async ({ data: commentData }): Promise<TCommentSingleResponse | { error: string }> => {
-    const session = await useAppSession()
+  .handler(
+    async ({
+      data: commentData,
+    }): Promise<TCommentSingleResponse | { error: string }> => {
+      const session = await useAppSession()
 
-    if (!session.data.jwt || !session.data.userId) {
-      return { error: 'Authentication required' }
-    }
-
-    try {
-      const response = await createCommentInternal(
-        commentData,
-        session.data.jwt,
-      )
-      return response
-    } catch (error) {
-      console.error('Error creating comment:', error)
-      return {
-        error:
-          error instanceof Error ? error.message : 'Failed to create comment',
+      if (!session.data.jwt || !session.data.userId) {
+        return { error: 'Authentication required' }
       }
-    }
-  },
-)
+
+      try {
+        const response = await createCommentInternal(
+          commentData,
+          session.data.jwt,
+        )
+        return response
+      } catch (error) {
+        console.error('Error creating comment:', error)
+        return {
+          error:
+            error instanceof Error ? error.message : 'Failed to create comment',
+        }
+      }
+    },
+  )
 
 // Server function to update a comment
 export const updateComment = createServerFn({

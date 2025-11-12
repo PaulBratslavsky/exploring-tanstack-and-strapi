@@ -15,5 +15,11 @@ export default factories.createCoreRouter("api::comment.comment", {
     create: {
       middlewares: [],
     },
+    update: {
+      middlewares: ["global::is-owner"],
+    },
+    delete: {
+      middlewares: ["global::is-owner"],
+    },
   },
 });

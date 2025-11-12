@@ -7,11 +7,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '../ui/breadcrumb'
+import { CommentSection } from './comment-section'
 import { MarkdownContent } from './markdown-content'
 import { StrapiImage } from './strapi-image'
-import { CommentSection } from './comment-section'
-import { type CurrentUser } from '../../lib/comment-auth'
-
+import type { CurrentUser } from '../../lib/comment-auth'
 import type { TAuthor, TImage } from '../../types'
 
 export interface IArticleDetail {
@@ -100,7 +99,9 @@ export function ArticleDetail(props: IArticleDetail) {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link to="/articles" search={{ page: 1 }}>Articles</Link>
+                    <Link to="/articles" search={{ page: 1 }}>
+                      Articles
+                    </Link>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />

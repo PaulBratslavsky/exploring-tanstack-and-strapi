@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { strapiApi } from '@/data/server-functions'
-import { type CurrentUser } from '@/lib/comment-auth'
+import type { CurrentUser } from '@/lib/comment-auth'
+import { CommentFeedItem } from '@/components/custom/comment-feed-item'
 import { CommentForm } from '@/components/custom/comment-form'
 import { CommentPagination } from '@/components/custom/comment-pagination'
-import { CommentFeedItem } from '@/components/custom/comment-feed-item'
 import { CommentSearch } from '@/components/custom/comment-search'
+import { strapiApi } from '@/data/server-functions'
 
 interface CommentSectionProps {
   readonly articleDocumentId: string
@@ -20,7 +20,7 @@ export function CommentSection({
 }: CommentSectionProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
-  const pageSize = 5;
+  const pageSize = 5
 
   const {
     data: commentsResponse,
@@ -98,7 +98,7 @@ export function CommentSection({
             <h3 className="text-lg font-semibold text-foreground">
               Comments ({totalComments})
             </h3>
-            {isFetching && !isLoading && (
+            {isFetching && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 <span>Loading...</span>
@@ -109,7 +109,7 @@ export function CommentSection({
           {/* Search Bar */}
           <CommentSearch onSearch={handleSearch} />
 
-          {searchQuery && (
+          {searchQuery.length > 0 && (
             <p className="text-sm text-muted-foreground">
               Showing results for "{searchQuery}"
             </p>

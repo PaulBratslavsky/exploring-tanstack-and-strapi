@@ -1,18 +1,18 @@
-import { getGlobalData } from './global'
-import { getLandingPageData } from './landing-page'
 import { getArticlesData, getArticlesDataBySlug } from './articles'
 import {
-  registerUserServerFunction,
+  getCurrentUserServerFunction,
   loginUserServerFunction,
   logoutUserServerFunction,
-  getCurrentUserServerFunction
+  registerUserServerFunction,
 } from './auth'
 import {
-  getCommentsForArticle,
   createComment,
+  deleteComment,
+  getCommentsForArticle,
   updateComment,
-  deleteComment
 } from './comments'
+import { getGlobalData } from './global'
+import { getLandingPageData } from './landing-page'
 
 export const strapiApi = {
   global: {
@@ -36,5 +36,5 @@ export const strapiApi = {
     createComment,
     updateComment,
     deleteComment,
-  }
+  },
 }
