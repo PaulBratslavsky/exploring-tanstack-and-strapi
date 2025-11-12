@@ -8,21 +8,17 @@ import type { TCommentCreate } from '../../types'
 
 interface CommentFormProps {
   readonly articleDocumentId: string
-  readonly parentCommentId?: string
   readonly currentUser?: CurrentUser | null
   readonly onSuccess?: () => void
-  readonly onCancel?: () => void
   readonly placeholder?: string
   readonly className?: string
 }
 
 export function CommentForm({
   articleDocumentId,
-  parentCommentId,
   currentUser,
   onSuccess,
-  onCancel,
-  placeholder = "Write a comment...",
+  placeholder = "What are your thoughts?",
   className = ""
 }: CommentFormProps) {
   const [content, setContent] = useState('')
@@ -66,18 +62,10 @@ export function CommentForm({
 
     const commentData: TCommentCreate = {
       content: content.trim(),
-      contentType: 'comment',
-      contentId: articleDocumentId,
-      ...(parentCommentId && { parentId: parentCommentId })
+      contentId: articleDocumentId, // Will be converted to articleId in the server function
     }
 
     createCommentMutation.mutate(commentData)
-  }
-
-  const handleCancel = () => {
-    setContent('')
-    setError(null)
-    onCancel?.()
   }
 
   // Show authentication prompt for unauthenticated users
@@ -146,22 +134,11 @@ export function CommentForm({
       </div>
 
       <div className="flex gap-2 justify-end">
-        {onCancel && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleCancel}
-            disabled={createCommentMutation.isPending}
-          >
-            Cancel
-          </Button>
-        )}
-        
         <Button
           type="submit"
           disabled={createCommentMutation.isPending || !content.trim() || isOverLimit}
         >
-          {createCommentMutation.isPending ? 'Posting...' : parentCommentId ? 'Reply' : 'Post Comment'}
+          {createCommentMutation.isPending ? 'Posting...' : 'Post Comment'}
         </Button>
       </div>
     </form>

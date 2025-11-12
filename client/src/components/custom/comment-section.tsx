@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { TComment } from '../../types'
-import { CommentList } from './comment-list'
-import { CommentForm } from './comment-form'
-import { strapiApi } from '../../data/server-functions'
-import { type CurrentUser } from '../../lib/comment-auth'
+import { strapiApi } from '@/data/server-functions'
+import { type CurrentUser } from '@/lib/comment-auth'
+import { CommentForm } from '@/components/custom/comment-form'
+import { CommentPagination } from '@/components/custom/comment-pagination'
+import { CommentFeedItem } from '@/components/custom/comment-feed-item'
+import { CommentSearch } from '@/components/custom/comment-search'
 
 interface CommentSectionProps {
   readonly articleDocumentId: string
@@ -11,37 +13,50 @@ interface CommentSectionProps {
   readonly className?: string
 }
 
-export function CommentSection({ articleDocumentId, currentUser, className = '' }: CommentSectionProps) {
+export function CommentSection({
+  articleDocumentId,
+  currentUser,
+  className = '',
+}: CommentSectionProps) {
+  const [currentPage, setCurrentPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const pageSize = 5;
+
   const {
     data: commentsResponse,
     isLoading,
+    isFetching,
     error,
-    refetch
+    refetch,
   } = useQuery({
-    queryKey: ['comments', articleDocumentId],
-    queryFn: () => strapiApi.comments.getCommentsForArticle({ data: articleDocumentId }),
+    queryKey: ['comments', articleDocumentId, currentPage, searchQuery],
+    queryFn: () =>
+      strapiApi.comments.getCommentsForArticle({
+        data: {
+          articleDocumentId,
+          page: currentPage,
+          pageSize,
+          searchQuery: searchQuery || undefined,
+        },
+      }),
     enabled: !!articleDocumentId,
+    placeholderData: (previousData) => previousData,
   })
 
-  // Note: Hierarchy building is now handled on the server side
-  // The API returns pre-built hierarchical comment structures
-  
-  // Helper function to count total comments in hierarchical structure
-  const countTotalComments = (comments: TComment[]): number => {
-    return comments.reduce((total, comment) => {
-      return total + 1 + (comment.replies ? countTotalComments(comment.replies) : 0)
-    }, 0)
+  const handleSearch = (term: string) => {
+    setSearchQuery(term)
+    setCurrentPage(1) // Reset to first page on new search
   }
 
   if (isLoading) {
     return (
       <div className={`animate-pulse ${className}`}>
         <div className="space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
           <div className="space-y-3">
-            <div className="h-20 bg-gray-200 rounded"></div>
-            <div className="h-20 bg-gray-200 rounded"></div>
-            <div className="h-20 bg-gray-200 rounded"></div>
+            <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
           </div>
         </div>
       </div>
@@ -51,10 +66,12 @@ export function CommentSection({ articleDocumentId, currentUser, className = '' 
   if (error) {
     return (
       <div className={`text-center py-8 ${className}`}>
-        <div className="text-red-600 mb-4">
+        <div className="text-red-600 dark:text-red-400 mb-4">
           <p>Failed to load comments</p>
-          <p className="text-sm text-gray-500">
-            {error instanceof Error ? error.message : 'An unexpected error occurred'}
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'}
           </p>
         </div>
         <button
@@ -67,30 +84,82 @@ export function CommentSection({ articleDocumentId, currentUser, className = '' 
     )
   }
 
-  // Comments are already hierarchical from the API
-  const hierarchicalComments = commentsResponse?.data || []
-  const totalCommentCount = countTotalComments(hierarchicalComments)
+  const comments = commentsResponse?.data || []
+  const pagination = commentsResponse?.meta?.pagination
+  const totalComments = pagination?.total || 0
+  const totalPages = pagination?.pageCount || 1
 
   return (
     <div className={`${className}`}>
-      <div className="border-t border-gray-200 pt-8">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">
-          Comments ({totalCommentCount})
-        </h3>
-        
-        <div className="space-y-6">
-          <CommentForm 
+      <div className="bg-card rounded-lg shadow-sm border">
+        {/* Header with Search */}
+        <div className="px-6 py-4 border-b space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-foreground">
+              Comments ({totalComments})
+            </h3>
+            {isFetching && !isLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span>Loading...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Search Bar */}
+          <CommentSearch onSearch={handleSearch} />
+
+          {searchQuery && (
+            <p className="text-sm text-muted-foreground">
+              Showing results for "{searchQuery}"
+            </p>
+          )}
+        </div>
+
+        {/* Comment Input at Top */}
+        <div className="px-6 py-4 border-b bg-muted/30">
+          <CommentForm
             articleDocumentId={articleDocumentId}
             currentUser={currentUser}
-          />
-          
-          <CommentList 
-            comments={hierarchicalComments} 
-            currentUser={currentUser}
-            articleDocumentId={articleDocumentId}
-            onReplySuccess={() => refetch()}
+            onSuccess={() => {
+              refetch()
+              setCurrentPage(1)
+            }}
           />
         </div>
+
+        {/* Comments Feed */}
+        <div className="divide-y">
+          {comments.length === 0 ? (
+            <div className="px-6 py-12 text-center text-muted-foreground">
+              {searchQuery ? (
+                <p>No comments found matching "{searchQuery}"</p>
+              ) : (
+                <p>No comments yet. Be the first to comment!</p>
+              )}
+            </div>
+          ) : (
+            comments.map((comment) => (
+              <CommentFeedItem
+                key={comment.documentId}
+                comment={comment}
+                currentUser={currentUser}
+                onUpdate={() => refetch()}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t">
+            <CommentPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

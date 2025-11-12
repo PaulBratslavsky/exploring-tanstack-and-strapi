@@ -2,21 +2,18 @@
  * comment router
  */
 
-import { factories } from '@strapi/strapi';
+import { factories } from "@strapi/strapi";
 
-export default factories.createCoreRouter('api::comment.comment', {
+export default factories.createCoreRouter("api::comment.comment", {
   config: {
     find: {
-      middlewares: ["api::comment.comment-populate"]
+      middlewares: [],
     },
     findOne: {
-      middlewares: ["api::comment.comment-populate"]
+      middlewares: [],
     },
     create: {
-      middlewares: ["api::comment.comment-populate"]
+      middlewares: [],
     },
-    update: {
-      middlewares: ["api::comment.comment-populate"]
-    }
-  }
+  },
 });

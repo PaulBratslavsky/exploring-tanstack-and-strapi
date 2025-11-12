@@ -5,11 +5,9 @@ import type {
   TCommentResponse,
   TCommentSingleResponse,
 } from '@/types'
-import { sdk } from '@/data/strapi-sdk'
 import { useAppSession } from '@/lib/session'
 import { getStrapiURL } from '@/lib/utils'
 
-const comments = sdk.collection('comments')
 const baseUrl = getStrapiURL()
 
 // Helper function to make authenticated requests
@@ -30,30 +28,49 @@ const makeAuthenticatedRequest = async (
   })
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
+    const errorData = await response.json().catch(() => ({}))
+    console.error('API Error:', response.status, errorData)
+    throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error?.message || 'Unknown error'}`)
   }
 
   return response.json()
 }
 
-// Get comments for a specific article
-const getCommentsForArticleInternal = async (articleDocumentId: string) => {
-  return comments.find({
-    filters: {
-      contentType: {
-        $eq: 'comment',
-      },
-      contentId: {
-        $eq: articleDocumentId,
-      },
-      isDeleted: {
-        $eq: false,
-      },
-    },
-    // No populate needed - hierarchy is built on server side
-    // Author info is included via userId field
-    sort: ['createdAt:desc'],
-  }) as Promise<TCommentResponse>
+// Get comments for a specific article using standard Strapi filtering
+const getCommentsForArticleInternal = async (
+  articleDocumentId: string,
+  page: number = 1,
+  pageSize: number = 10,
+  searchQuery?: string
+) => {
+  const url = new URL('/api/comments', baseUrl)
+  
+  // Use Strapi's filtering to get comments for this article
+  url.searchParams.append('filters[articleId][$eq]', articleDocumentId)
+  
+  // Add search filter if provided (search by author username or content)
+  if (searchQuery && searchQuery.trim()) {
+    url.searchParams.append('filters[$or][0][author][username][$containsi]', searchQuery.trim())
+    url.searchParams.append('filters[$or][1][content][$containsi]', searchQuery.trim())
+  }
+  
+  // Populate author to get username only (keep everything else private)
+  url.searchParams.append('populate[author][fields][0]', 'username')
+  
+  // Pagination
+  url.searchParams.append('pagination[page]', String(page))
+  url.searchParams.append('pagination[pageSize]', String(pageSize))
+  
+  // Sort by most recent first
+  url.searchParams.append('sort[0]', 'createdAt:desc')
+
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+
+  return response.json() as Promise<TCommentResponse>
 }
 
 // Create a new comment
@@ -69,31 +86,23 @@ const createCommentInternal = async (
     throw new Error('Comment content is required')
   }
 
-  // Support both new and legacy formats
-  const hasNewFormat = commentData.contentType && commentData.contentId
-  const hasLegacyFormat = commentData.article
+  // Determine articleId
+  let articleId = ''
 
-  if (!hasNewFormat && !hasLegacyFormat) {
-    throw new Error('Article or content reference is required')
+  if (commentData.contentId) {
+    // New format
+    articleId = commentData.contentId
+  } else if (commentData.article) {
+    // Legacy format
+    articleId = commentData.article
+  } else {
+    throw new Error('Article reference is required')
   }
 
-  const requestData: any = {
+  const requestData = {
     content: commentData.content,
-  }
-
-  // Use new format if available, otherwise convert from legacy
-  if (hasNewFormat) {
-    requestData.contentType = commentData.contentType
-    requestData.contentId = commentData.contentId
-  } else if (hasLegacyFormat) {
-    requestData.article = commentData.article // Backend will convert this
-  }
-
-  // Handle parent comment reference
-  if (commentData.parentId) {
-    requestData.parentId = commentData.parentId
-  } else if (commentData.parentComment) {
-    requestData.parentComment = commentData.parentComment // Backend will convert this
+    articleId,
+    // author will be set by middleware from authenticated user
   }
 
   return makeAuthenticatedRequest(
@@ -121,7 +130,6 @@ const updateCommentInternal = async (
       body: JSON.stringify({
         data: {
           content: commentData.content,
-          isEdited: true,
         },
       }),
     },
@@ -147,9 +155,19 @@ const deleteCommentInternal = async (
 export const getCommentsForArticle = createServerFn({
   method: 'GET',
 })
-  .validator((data: string) => data)
-  .handler(async ({ data: articleDocumentId }): Promise<TCommentResponse> => {
-    const response = await getCommentsForArticleInternal(articleDocumentId)
+  .validator((data: { 
+    articleDocumentId: string
+    page?: number
+    pageSize?: number
+    searchQuery?: string
+  }) => data)
+  .handler(async ({ data }): Promise<TCommentResponse> => {
+    const response = await getCommentsForArticleInternal(
+      data.articleDocumentId,
+      data.page,
+      data.pageSize,
+      data.searchQuery
+    )
     return response
   })
 
