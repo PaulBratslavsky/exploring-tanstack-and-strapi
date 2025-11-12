@@ -89,15 +89,24 @@ const createCommentInternal = async (
   }
 
   const requestData = {
-    content: commentData.content,
-    articleId,
-    // author will be set by middleware from authenticated user
+    data: {
+      content: commentData.content,
+      articleId,
+      // author will be set by controller from authenticated user
+    },
   }
 
-  const authenticatedComments = getAuthenticatedCollection('comments', jwt)
-  return authenticatedComments.create(
-    requestData,
-  ) as Promise<TCommentSingleResponse>
+  // Use custom route for creating comments
+  const response = await sdk.fetch('comments/custom/create-comment', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify(requestData),
+  })
+
+  return response.json() as Promise<TCommentSingleResponse>
 }
 
 // Update a comment

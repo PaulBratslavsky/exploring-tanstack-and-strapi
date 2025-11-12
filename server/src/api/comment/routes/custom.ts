@@ -1,5 +1,5 @@
 /**
- * comment router
+ * comment custom routes
  */
 
 export default {
@@ -14,9 +14,9 @@ export default {
       },
     },
     {
-      method: "GET",
-      path: "/comments/get/hello",
-      handler: "custom.hello",
+      method: "POST",
+      path: "/comments/custom/create-comment",
+      handler: "comment.createComment",
       config: {
         policies: [],
         middlewares: [],

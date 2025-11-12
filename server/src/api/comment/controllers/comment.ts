@@ -7,10 +7,8 @@ import { factories } from "@strapi/strapi";
 export default factories.createCoreController(
   "api::comment.comment",
   ({ strapi }) => ({
-
-
-    // Override create to set author from authenticated user
-    async create(ctx) {
+    // Custom method: Create comment with author set from authenticated user
+    async createComment(ctx) {
       const user = ctx.state.user;
       if (!user) {
         return ctx.unauthorized("You must be logged in to comment");
@@ -18,12 +16,14 @@ export default factories.createCoreController(
 
       const { data } = ctx.request.body;
 
+      console.log("Creating comment with data:", data);
+
       // Create comment with author set server-side
       const entity = await strapi.documents("api::comment.comment").create({
         data: {
           ...data,
           author: {
-            set: [user.documentId],
+            connect: [{ documentId: user.documentId }],
           },
         },
         populate: {
@@ -32,6 +32,8 @@ export default factories.createCoreController(
           },
         },
       });
+
+      console.log("Comment created:", entity);
 
       // Sanitize response
       const sanitizedEntity = {
@@ -76,7 +78,7 @@ export default factories.createCoreController(
       console.log("Found comments:", results.length);
 
       // Sanitize to only include username from author
-      const sanitizedEntities = results.map((entity) => ({
+      const sanitizedEntities = results.map((entity: any) => ({
         ...entity,
         author: entity.author
           ? {
@@ -91,33 +93,6 @@ export default factories.createCoreController(
         data: sanitizedEntities,
         meta: { pagination },
       };
-    },
-
-    // Custom method: Create comment with author set server-side (for custom route)
-    async createWithUser(ctx) {
-      const user = ctx.state.user;
-      if (!user) {
-        return ctx.unauthorized("You must be logged in to comment");
-      }
-
-      const { data } = ctx.request.body;
-
-      // TEMPORARY: Return test data for debugging
-      const testResponse = {
-        id: Math.floor(Math.random() * 10000),
-        documentId: "test-doc-" + Date.now(),
-        content: data.content,
-        articleId: data.articleId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        author: {
-          id: user.id,
-          documentId: user.documentId,
-          username: user.username,
-        },
-      };
-
-      return testResponse;
     },
   })
 );
